@@ -1,0 +1,34 @@
+name: Build SA6400 Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: epyc7002-7.2-5.10.55
+          
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y flex bison m4 bc libelf-dev libssl-dev dwarves zstd python3 cpio rsync gcc make
+
+      - name: Copy Synology config
+        run: |
+          cp synology/synoconfigs/epyc7002 .config
+          
+      - name: Build kernel
+        run: |
+          make -j$(nproc) bzImage ARCH=x86_64 CC=gcc
+
+      - name: Upload bzImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: bzImage
+          path: arch/x86/boot/bzImage
+          retention-days: 1
