@@ -22,17 +22,14 @@ jobs:
         run: |
           cp synology/synoconfigs/epyc7002 .config
           
-      - name: Enable pinctrl-jasperlake module
+      - name: Enable pinctrl modules
         run: |
           scripts/config --module CONFIG_PINCTRL_JASPERLAKE
+          scripts/config --module CONFIG_PINCTRL_INTEL
 
       - name: Build kernel and modules
         run: |
           make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
-
-      - name: Find pinctrl modules
-        run: |
-          find . -name "pinctrl-jasperlake.ko" -o -name "pinctrl-intel.ko" | head -10
 
       - name: Package bzImage
         run: |
@@ -45,9 +42,13 @@ jobs:
           path: bzImage.tar.gz
           retention-days: 1
 
-      - name: Upload modules
+      - name: Package pinctrl modules
+        run: |
+          tar -czvf pinctrl-modules.tar.gz drivers/pinctrl/intel/pinctrl-*.ko
+
+      - name: Upload pinctrl modules
         uses: actions/upload-artifact@v4
         with:
           name: pinctrl-modules
-          path: drivers/pinctrl/intel/pinctrl-jasperlake.ko
+          path: pinctrl-modules.tar.gz
           retention-days: 1
