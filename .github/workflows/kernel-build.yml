@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel + Modules
+name: Build SA6400 Kernel (Built-in)
 
 on:
   workflow_dispatch:
@@ -22,14 +22,36 @@ jobs:
         run: |
           cp synology/synoconfigs/epyc7002 .config
           
-      - name: Enable pinctrl modules
+      - name: Enable built-in modules
         run: |
-          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
-          scripts/config --module CONFIG_PINCTRL_INTEL
+          # GPIO/PIN控制器 (内置)
+          scripts/config --enable CONFIG_PINCTRL_INTEL
+          scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
+          
+          # CPU温度监控 (内置)
+          scripts/config --enable CONFIG_SENSORS_CORETEMP
+          scripts/config --enable CONFIG_INTEL_POWERCLAND
+          scripts/config --enable CONFIG_INTEL_POWERCLAMP
+          
+          # 热管理 (内置)
+          scripts/config --enable CONFIG_ACPI_THERMAL
+          
+          # PWM/LPSS (内置)
+          scripts/config --enable CONFIG_PWM_LPSS
+          scripts/config --enable CONFIG_PWM_LPSS_PCI
+          scripts/config --enable CONFIG_PWM_LPSS_PLATFORM
+          
+          # PCIe热插拔 (内置)
+          scripts/config --enable CONFIG_HOTPLUG_PCI
+          scripts/config --enable CONFIG_ACPIPHP
+          scripts/config --enable CONFIG_HOTPLUG_ACPI
+          
+          # 硬盘热插拔 (内置)
+          scripts/config --enable CONFIG_SCSI_SCAN_ASYNC
 
-      - name: Build kernel and modules
+      - name: Build kernel (bzImage only)
         run: |
-          make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
+          make -j$(nproc) bzImage ARCH=x86_64 CC=gcc
 
       - name: Package bzImage
         run: |
@@ -38,17 +60,6 @@ jobs:
       - name: Upload bzImage
         uses: actions/upload-artifact@v4
         with:
-          name: bzImage
+          name: bzImage-BuiltIn
           path: bzImage.tar.gz
-          retention-days: 1
-
-      - name: Package pinctrl modules
-        run: |
-          tar -czvf pinctrl-modules.tar.gz drivers/pinctrl/intel/pinctrl-*.ko
-
-      - name: Upload pinctrl modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: pinctrl-modules
-          path: pinctrl-modules.tar.gz
           retention-days: 1
