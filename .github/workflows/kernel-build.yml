@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel
+name: Build SA6400 Kernel + Modules
 
 on:
   workflow_dispatch:
@@ -16,19 +16,38 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y flex bison m4 bc libelf-dev libssl-dev dwarves zstd python3 cpio rsync gcc make
+          sudo apt-get install -y flex bison m4 bc libelf-dev libssl-dev dwarves zstd python3 cpio rsync gcc make kmod
 
       - name: Copy Synology config
         run: |
           cp synology/synoconfigs/epyc7002 .config
           
-      - name: Build kernel
+      - name: Enable pinctrl-jasperlake module
         run: |
-          make -j$(nproc) bzImage ARCH=x86_64 CC=gcc
+          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
+
+      - name: Build kernel and modules
+        run: |
+          make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
+
+      - name: Find pinctrl modules
+        run: |
+          find . -name "pinctrl-jasperlake.ko" -o -name "pinctrl-intel.ko" | head -10
+
+      - name: Package bzImage
+        run: |
+          tar -czvf bzImage.tar.gz arch/x86/boot/bzImage
 
       - name: Upload bzImage
         uses: actions/upload-artifact@v4
         with:
           name: bzImage
-          path: arch/x86/boot/bzImage
+          path: bzImage.tar.gz
+          retention-days: 1
+
+      - name: Upload modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinctrl-modules
+          path: drivers/pinctrl/intel/pinctrl-jasperlake.ko
           retention-days: 1
