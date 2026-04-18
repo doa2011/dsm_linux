@@ -45,20 +45,28 @@ jobs:
           #####################################
           scripts/config --module CONFIG_DRM
           scripts/config --module CONFIG_DRM_KMS_HELPER
-          scripts/config --module CONFIG_DRM_TTM
 
           #####################################
-          # 🔥 PINCTRL（关键：GPIO基础）
+          # 🔥 PINCTRL（GPIO基础）
           #####################################
           scripts/config --module CONFIG_PINCTRL
           scripts/config --module CONFIG_PINCTRL_INTEL
           scripts/config --module CONFIG_PINCTRL_JASPERLAKE
 
           #####################################
-          # 🔥 I2C（OLED / 传感器）
+          # 🔥 GPIO（OLED / 控制）
           #####################################
-          scripts/config --module CONFIG_I2C
+          scripts/config --module CONFIG_GPIOLIB
+          scripts/config --module CONFIG_GPIO_CDEV
+          scripts/config --module CONFIG_GPIO_SYSFS
+          scripts/config --module CONFIG_GPIO_ACPI
+
+          #####################################
+          # 🔥 I2C（OLED / 传感器）— I2C核心必须内置
+          #####################################
+          scripts/config --enable CONFIG_I2C
           scripts/config --module CONFIG_I2C_ALGOBIT
+          scripts/config --module CONFIG_I2C_DEV
           scripts/config --module CONFIG_I2C_GPIO
           scripts/config --module CONFIG_I2C_MUX
 
@@ -77,11 +85,21 @@ jobs:
           scripts/config --module CONFIG_HWMON
 
           #####################################
-          # 🔥 常见传感器（可选）
+          # 🔥 常见传感器
           #####################################
           scripts/config --module CONFIG_SENSORS_CORETEMP
           scripts/config --module CONFIG_SENSORS_ADT7475
           scripts/config --module CONFIG_SENSORS_NCT6775
+
+          #####################################
+          # 🔥 USB Audio
+          #####################################
+          scripts/config --module CONFIG_SND_USB_AUDIO
+
+          #####################################
+          # 🛡️ 禁用 BTF（避免 pahole 错误）
+          #####################################
+          scripts/config --disable CONFIG_DEBUG_INFO_BTF
 
       - name: Prepare config
         run: |
@@ -91,9 +109,6 @@ jobs:
         run: |
           make -j$(nproc) bzImage modules
 
-      ########################################
-      # 📦 正确 modules 安装（关键修复）
-      ########################################
       - name: Install modules to staging
         run: |
           mkdir -p module_staging
