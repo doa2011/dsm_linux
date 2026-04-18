@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel (Built-in)
+name: Build SA6400 Kernel (Built-in + Sensor Enhanced)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -17,34 +17,77 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y flex bison m4 bc libelf-dev libssl-dev dwarves zstd python3 cpio rsync gcc make kmod
+          sudo apt-get install -y \
+            flex bison m4 bc libelf-dev libssl-dev dwarves \
+            zstd python3 cpio rsync gcc make kmod
 
       - name: Copy Synology config
         run: |
           cp synology/synoconfigs/epyc7002 .config
 
-      - name: Enable kernel modules
+      - name: Enable SA6400 + N5105 core modules
         run: |
-          # Intel 2.5G Ethernet (N5105 i225/i226)
-          scripts/config --module CONFIG_IGC
 
-          # USB Ethernet
+          ############################
+          # 🔥 Intel NIC (N5105 必需)
+          ############################
+          scripts/config --module CONFIG_IGC   # i225/i226 2.5G
+
+          ############################
+          # 🔥 USB 网络
+          ############################
           scripts/config --module CONFIG_USB_NET_AX88179_178A
           scripts/config --module CONFIG_USB_NET_CDCETHER
           scripts/config --module CONFIG_USB_NET_CDC_NCM
 
-          # Intel Graphics
+          ############################
+          # 🔥 DRM（iGPU / Jasper Lake）
+          ############################
           scripts/config --module CONFIG_DRM
           scripts/config --module CONFIG_DRM_KMS_HELPER
           scripts/config --module CONFIG_DRM_TTM
 
-          # I2C bit-banging
+          ############################
+          # 🔥 I2C / GPIO（OLED / 传感器基础）
+          ############################
+          scripts/config --module CONFIG_I2C
           scripts/config --module CONFIG_I2C_ALGOBIT
+          scripts/config --module CONFIG_I2C_DEV
+          scripts/config --module CONFIG_I2C_GPIO
 
-          # Sensors
+          scripts/config --module CONFIG_GPIOLIB
+          scripts/config --module CONFIG_GPIO_CDEV
+          scripts/config --module CONFIG_GPIO_SYSFS
+
+          ############################
+          # 🔥 THERMAL（必须 built-in 建议，但这里保守 module）
+          ############################
+          scripts/config --module CONFIG_THERMAL
+          scripts/config --module CONFIG_X86_PKG_TEMP_THERMAL
+          scripts/config --module CONFIG_INTEL_PCH_THERMAL
+          scripts/config --module CONFIG_INT340X_THERMAL
+
+          ############################
+          # 🔥 HWMON（传感器框架）
+          ############################
+          scripts/config --module CONFIG_HWMON
+
+          ############################
+          # 🔥 CPU sensor（N5105关键）
+          ############################
+          scripts/config --module CONFIG_X86_PKG_TEMP_THERMAL
+          scripts/config --module CONFIG_INTEL_POWERCLAMP
+
+          ############################
+          # 🔥 常用传感器（可选但建议）
+          ############################
           scripts/config --module CONFIG_SENSORS_ADT7475
+          scripts/config --module CONFIG_SENSORS_CORETEMP
+          scripts/config --module CONFIG_SENSORS_NCT6775
 
-          # USB Audio
+          ############################
+          # 🔥 USB 音频（NAS可选）
+          ############################
           scripts/config --module CONFIG_SND_USB_AUDIO
 
       - name: Prepare config
@@ -53,17 +96,26 @@ jobs:
 
       - name: Build kernel and modules
         run: |
-          make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
+          make -j$(nproc) bzImage modules
 
-      - name: Package bzImage (gz, keep original name inside)
+      ########################################################
+      # 📦 正确方式：安装模块到 staging 目录（关键优化）
+      ########################################################
+      - name: Install modules to staging
+        run: |
+          mkdir -p module_staging
+          make modules_install INSTALL_MOD_PATH=module_staging
+
+      - name: Package bzImage
         run: |
           TAG="epyc7002-7.2-5.10.55"
           gzip -c arch/x86/boot/bzImage > bzImage-${TAG}.gz
 
-      - name: Package modules
+      - name: Package modules (clean staged)
         run: |
           TAG="epyc7002-7.2-5.10.55"
-          find . -name "*.ko" -type f | tar -czvf modules-${TAG}.tar.gz -T -
+          cd module_staging/lib/modules
+          tar -czvf ../../../modules-${TAG}.tar.gz .
 
       - name: Generate tag
         id: tag
@@ -77,14 +129,22 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: SA6400 Kernel ${{ steps.tag.outputs.tag }}
           body: |
-            Automated build for SA6400 (N5105)
-            DSM: 7.2.x
-            Kernel: 5.10.55
+            SA6400 (N5105 / Jasper Lake) Kernel Build
 
-            bzImage:
-            - gzip compressed
-            - filename: bzImage-epyc7002-7.2-5.10.55.gz
-            - extract → bzImage (directly usable)
+            Kernel:
+            - 5.10.55
+            - DSM 7.2.x compatible
+
+            Features:
+            - Intel 2.5G NIC (igc)
+            - I2C + GPIO (OLED ready)
+            - Thermal + hwmon framework
+            - Intel iGPU DRM support
+            - USB Ethernet + Audio
+
+            Packaging:
+            - bzImage: gzip compressed
+            - modules: staged clean install
 
           prerelease: true
           files: |
