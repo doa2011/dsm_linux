@@ -136,7 +136,7 @@ jobs:
           done < delta_modules.txt
 
           cd module_delta
-          tar -czvf ../modules-delta.tar.gz . --exclude='.*'
+          tar --exclude='.*' -czvf ../modules-delta.tar.gz .
           echo ""
           echo "=== modules-delta.tar.gz created ==="
           ls -lh ../modules-delta.tar.gz
