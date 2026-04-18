@@ -22,44 +22,47 @@ jobs:
         run: |
           cp synology/synoconfigs/epyc7002 .config
           
-      - name: Enable built-in modules
+      - name: Enable kernel modules
         run: |
-          # GPIO/PIN控制器 (内置)
-          scripts/config --enable CONFIG_PINCTRL_INTEL
-          scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
+          # GPIO/PIN控制器 (模块)
+          scripts/config --module CONFIG_PINCTRL_INTEL
+          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
           
-          # CPU温度监控 (内置)
-          scripts/config --enable CONFIG_SENSORS_CORETEMP
-          scripts/config --enable CONFIG_INTEL_POWERCLAND
-          scripts/config --enable CONFIG_INTEL_POWERCLAMP
+          # CPU温度监控 (模块)
+          scripts/config --module CONFIG_SENSORS_CORETEMP
+          scripts/config --module CONFIG_INTEL_POWERCLAND
+          scripts/config --module CONFIG_INTEL_POWERCLAMP
           
-          # 热管理 (内置)
-          scripts/config --enable CONFIG_ACPI_THERMAL
+          # 热管理 (模块)
+          scripts/config --module CONFIG_ACPI_THERMAL
           
-          # PWM/LPSS (内置)
-          scripts/config --enable CONFIG_PWM_LPSS
-          scripts/config --enable CONFIG_PWM_LPSS_PCI
-          scripts/config --enable CONFIG_PWM_LPSS_PLATFORM
+          # PWM/LPSS (模块)
+          scripts/config --module CONFIG_PWM_LPSS
+          scripts/config --module CONFIG_PWM_LPSS_PCI
+          scripts/config --module CONFIG_PWM_LPSS_PLATFORM
           
-          # PCIe热插拔 (内置)
-          scripts/config --enable CONFIG_HOTPLUG_PCI
-          scripts/config --enable CONFIG_ACPIPHP
-          scripts/config --enable CONFIG_HOTPLUG_ACPI
-          
-          # 硬盘热插拔 (内置)
-          scripts/config --enable CONFIG_SCSI_SCAN_ASYNC
+          # 硬盘热插拔 (模块)
+          scripts/config --module CONFIG_SCSI_SCAN_ASYNC
 
-      - name: Build kernel (bzImage only)
+      - name: Build kernel and modules
         run: |
-          make -j$(nproc) bzImage ARCH=x86_64 CC=gcc
+          make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
 
       - name: Package bzImage
         run: |
           tar -czvf bzImage.tar.gz arch/x86/boot/bzImage
 
-      - name: Upload bzImage
-        uses: actions/upload-artifact@v4
+      - name: Package modules
+        run: |
+          # 找出所有编译出的 .ko 模块
+          find . -name "*.ko" -type f | tar -czvf modules.tar.gz -T -
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: bzImage-BuiltIn
-          path: bzImage.tar.gz
-          retention-days: 1
+          draft: false
+          files: |
+            bzImage.tar.gz
+            modules.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
