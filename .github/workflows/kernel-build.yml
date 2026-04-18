@@ -109,32 +109,44 @@ jobs:
         run: |
           make -j$(nproc) bzImage modules
 
-      #############################################
-      # ⭐ 关键：提取“新增模块（=m）”
-      #############################################
-      - name: Extract newly built modules only
+      - name: Extract newly built modules only (delta)
         run: |
           mkdir -p module_delta
 
-          # 找出 config 里 =m 的项（原 config 没有的模块）
-          grep "=m" .config | cut -d= -f1 > enabled_modules.txt || true
+          # 找出新增的 =m 模块（base 没有的）
+          grep "=m" .config | cut -d= -f1 | sort > new_modules.txt
+          grep "=m" .config.base | cut -d= -f1 | sort > base_modules.txt
+          comm -23 new_modules.txt base_modules.txt > delta_modules.txt || true
 
-          echo "Modules marked as module:"
-          cat enabled_modules.txt || true
+          echo "=== Base =m modules: $(wc -l < base_modules.txt) ==="
+          echo "=== New  =m modules: $(wc -l < new_modules.txt) ==="
+          echo "=== Delta     modules: $(wc -l < delta_modules.txt) ==="
+          echo ""
+          echo "Delta modules list:"
+          cat delta_modules.txt || true
 
-          # 安装模块到临时目录
+          # 安装全部模块
           make modules_install INSTALL_MOD_PATH=module_delta
 
-          # 只保留真正新增的 ko
-          cd module_delta/lib/modules
-          KVER=$(ls | head -n1)
+          # 只复制 delta 模块 .ko 文件
+          KVER=$(ls module_delta/lib/modules/ | head -n1)
+          KMOD_DIR="module_delta/lib/modules/$KVER"
 
-          cd $KVER
+          while IFS= read -r mod; do
+            KO_FILE=$(find "$KMOD_DIR" -name "${mod}.ko" 2>/dev/null || true)
+            if [ -n "$KO_FILE" ]; then
+              echo "Packing: $mod.ko"
+              cp "$KO_FILE" module_delta/
+            else
+              echo "Not found (may be built-in or part of composite): $mod"
+            fi
+          done < delta_modules.txt
 
-          find . -name "*.ko" > all_ko.txt
-
-          # 简单策略：全部打包（更稳）
-          tar -czvf ../../../../modules-delta.tar.gz .
+          cd module_delta
+          tar -czvf ../modules-delta.tar.gz . --exclude='.*'
+          echo ""
+          echo "=== modules-delta.tar.gz created ==="
+          ls -lh ../modules-delta.tar.gz
 
       - name: Package kernel
         run: |
@@ -153,7 +165,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: SA6400 Kernel ${{ steps.tag.outputs.tag }}
           body: |
-            SA6400 N5105 Kernel Build (Built-in Core)
+            SA6400 N5105 Kernel Build (Built-in Core + Delta Modules)
 
             Features:
             - GPIO / PINCTRL fully built-in
@@ -163,8 +175,8 @@ jobs:
             - iGPU DRM built-in
 
             Notes:
-            - modules-delta.tar.gz = ONLY newly enabled modules
-            - bzImage contains all core features built-in
+            - bzImage contains ALL core features built-in
+            - modules-delta.tar.gz = ONLY newly enabled .ko modules (not in base config)
 
           prerelease: true
           files: |
