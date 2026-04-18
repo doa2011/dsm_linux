@@ -7,12 +7,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: epyc7002-7.2-5.10.55
-          
+
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
@@ -21,58 +22,73 @@ jobs:
       - name: Copy Synology config
         run: |
           cp synology/synoconfigs/epyc7002 .config
-          
+
       - name: Enable kernel modules
         run: |
           # Intel 2.5G Ethernet (N5105 i225/i226)
           scripts/config --module CONFIG_IGC
-          
-          # USB Ethernet (USB网卡)
+
+          # USB Ethernet
           scripts/config --module CONFIG_USB_NET_AX88179_178A
           scripts/config --module CONFIG_USB_NET_CDCETHER
           scripts/config --module CONFIG_USB_NET_CDC_NCM
-          
-          # Intel Graphics (N5105 UHD Graphics)
+
+          # Intel Graphics
           scripts/config --module CONFIG_DRM
           scripts/config --module CONFIG_DRM_KMS_HELPER
           scripts/config --module CONFIG_DRM_TTM
-          
-          # I2C bit-banging (显卡需要)
+
+          # I2C bit-banging
           scripts/config --module CONFIG_I2C_ALGOBIT
-          
-          # 温度传感器
+
+          # Sensors
           scripts/config --module CONFIG_SENSORS_ADT7475
-          
-          # 声音 - USB Audio
+
+          # USB Audio
           scripts/config --module CONFIG_SND_USB_AUDIO
+
+      - name: Prepare config
+        run: |
+          make olddefconfig
 
       - name: Build kernel and modules
         run: |
           make -j$(nproc) bzImage modules ARCH=x86_64 CC=gcc
 
-      - name: Package bzImage
+      - name: Package bzImage (gz, keep original name inside)
         run: |
-          tar -czvf bzImage.tar.gz arch/x86/boot/bzImage
+          TAG="epyc7002-7.2-5.10.55"
+          gzip -c arch/x86/boot/bzImage > bzImage-${TAG}.gz
 
       - name: Package modules
         run: |
-          # 打包所有编译出的 .ko 模块
-          find . -name "*.ko" -type f | tar -czvf modules.tar.gz -T -
+          TAG="epyc7002-7.2-5.10.55"
+          find . -name "*.ko" -type f | tar -czvf modules-${TAG}.tar.gz -T -
 
-      - name: Create Release
-        id: create_release
+      - name: Generate tag
+        id: tag
         run: |
           TAG="kernel-$(date +%Y%m%d-%H%M%S)"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          gh release create $TAG --title "Kernel $TAG" --notes "Automated kernel build" || true
 
-      - name: Upload to Release
+      - name: Create Release and Upload
         uses: softprops/action-gh-release@v2
         with:
-          tag: ${{ steps.create_release.outputs.tag }}
-          draft: false
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: SA6400 Kernel ${{ steps.tag.outputs.tag }}
+          body: |
+            Automated build for SA6400 (N5105)
+            DSM: 7.2.x
+            Kernel: 5.10.55
+
+            bzImage:
+            - gzip compressed
+            - filename: bzImage-epyc7002-7.2-5.10.55.gz
+            - extract → bzImage (directly usable)
+
+          prerelease: true
           files: |
-            bzImage.tar.gz
-            modules.tar.gz
+            bzImage-epyc7002-7.2-5.10.55.gz
+            modules-epyc7002-7.2-5.10.55.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
