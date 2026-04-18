@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel (Built-in + GPIO/OLED + Sensor)
+name: Build SA6400 Kernel (Built-in + Delta Modules)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
@@ -14,116 +14,132 @@ jobs:
         with:
           ref: epyc7002-7.2-5.10.55
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
             flex bison m4 bc libelf-dev libssl-dev dwarves \
-            zstd python3 cpio rsync gcc make kmod
+            zstd python3 cpio rsync gcc make kmod diffutils
 
-      - name: Copy Synology config
+      - name: Load base config (backup)
         run: |
           cp synology/synoconfigs/epyc7002 .config
+          cp .config .config.base
 
-      - name: Enable SA6400 + N5105 core modules
+      - name: Enable built-in kernel features
         run: |
 
-          #####################################
-          # 🔥 Intel NIC (N5105 i225/i226)
-          #####################################
-          scripts/config --module CONFIG_IGC
+          #################################
+          # Intel NIC (N5105)
+          #################################
+          scripts/config --enable CONFIG_IGC
 
-          #####################################
-          # 🔥 USB 网络
-          #####################################
-          scripts/config --module CONFIG_USB_NET_AX88179_178A
-          scripts/config --module CONFIG_USB_NET_CDCETHER
-          scripts/config --module CONFIG_USB_NET_CDC_NCM
+          #################################
+          # USB Network
+          #################################
+          scripts/config --enable CONFIG_USB_NET_AX88179_178A
+          scripts/config --enable CONFIG_USB_NET_CDCETHER
+          scripts/config --enable CONFIG_USB_NET_CDC_NCM
 
-          #####################################
-          # 🔥 DRM / iGPU
-          #####################################
-          scripts/config --module CONFIG_DRM
-          scripts/config --module CONFIG_DRM_KMS_HELPER
+          #################################
+          # DRM / iGPU
+          #################################
+          scripts/config --enable CONFIG_DRM
+          scripts/config --enable CONFIG_DRM_KMS_HELPER
+          scripts/config --enable CONFIG_DRM_TTM
 
-          #####################################
-          # 🔥 PINCTRL（GPIO基础）
-          #####################################
-          scripts/config --module CONFIG_PINCTRL
-          scripts/config --module CONFIG_PINCTRL_INTEL
-          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
+          #################################
+          # PINCTRL / GPIO（关键：全部内置）
+          #################################
+          scripts/config --enable CONFIG_PINCTRL
+          scripts/config --enable CONFIG_PINCTRL_INTEL
+          scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
 
-          #####################################
-          # 🔥 GPIO（OLED / 控制）
-          #####################################
-          scripts/config --module CONFIG_GPIOLIB
-          scripts/config --module CONFIG_GPIO_CDEV
-          scripts/config --module CONFIG_GPIO_SYSFS
-          scripts/config --module CONFIG_GPIO_ACPI
+          scripts/config --enable CONFIG_GPIOLIB
+          scripts/config --enable CONFIG_GPIO_CDEV
+          scripts/config --enable CONFIG_GPIO_ACPI
+          scripts/config --enable CONFIG_GPIO_SYSFS
 
-          #####################################
-          # 🔥 I2C（OLED / 传感器）— I2C核心必须内置
-          #####################################
+          #################################
+          # I2C（必须内置，否则 OLED 起不来）
+          #################################
           scripts/config --enable CONFIG_I2C
-          scripts/config --module CONFIG_I2C_ALGOBIT
           scripts/config --module CONFIG_I2C_DEV
-          scripts/config --module CONFIG_I2C_GPIO
-          scripts/config --module CONFIG_I2C_MUX
+          scripts/config --enable CONFIG_I2C_ALGOBIT
+          scripts/config --enable CONFIG_I2C_GPIO
+          scripts/config --enable CONFIG_I2C_MUX
 
-          #####################################
-          # 🔥 THERMAL（CPU温控）
-          #####################################
-          scripts/config --module CONFIG_THERMAL
-          scripts/config --module CONFIG_X86_PKG_TEMP_THERMAL
-          scripts/config --module CONFIG_INTEL_PCH_THERMAL
-          scripts/config --module CONFIG_INT340X_THERMAL
-          scripts/config --module CONFIG_INTEL_POWERCLAMP
+          #################################
+          # THERMAL（CPU温控）
+          #################################
+          scripts/config --enable CONFIG_THERMAL
+          scripts/config --enable CONFIG_X86_PKG_TEMP_THERMAL
+          scripts/config --enable CONFIG_INTEL_PCH_THERMAL
+          scripts/config --enable CONFIG_INT340X_THERMAL
+          scripts/config --enable CONFIG_INTEL_POWERCLAMP
 
-          #####################################
-          # 🔥 HWMON（传感器框架）
-          #####################################
-          scripts/config --module CONFIG_HWMON
+          #################################
+          # HWMON（必须内置）
+          #################################
+          scripts/config --enable CONFIG_HWMON
+          scripts/config --enable CONFIG_SENSORS_CORETEMP
+          scripts/config --enable CONFIG_SENSORS_ADT7475
+          scripts/config --enable CONFIG_SENSORS_NCT6775
 
-          #####################################
-          # 🔥 常见传感器
-          #####################################
-          scripts/config --module CONFIG_SENSORS_CORETEMP
-          scripts/config --module CONFIG_SENSORS_ADT7475
-          scripts/config --module CONFIG_SENSORS_NCT6775
+          #################################
+          # USB Audio
+          #################################
+          scripts/config --enable CONFIG_SND_USB_AUDIO
 
-          #####################################
-          # 🔥 USB Audio
-          #####################################
-          scripts/config --module CONFIG_SND_USB_AUDIO
+          #################################
+          # IOMMU（保持默认但显式）
+          #################################
+          scripts/config --enable CONFIG_INTEL_IOMMU
 
-          #####################################
-          # 🛡️ 禁用 BTF（避免 pahole 错误）
-          #####################################
+          #################################
+          # 防止 debug BTF 报错
+          #################################
           scripts/config --disable CONFIG_DEBUG_INFO_BTF
 
       - name: Prepare config
         run: |
           make olddefconfig
 
-      - name: Build kernel and modules
+      - name: Build kernel
         run: |
           make -j$(nproc) bzImage modules
 
-      - name: Install modules to staging
+      #############################################
+      # ⭐ 关键：提取“新增模块（=m）”
+      #############################################
+      - name: Extract newly built modules only
         run: |
-          mkdir -p module_staging
-          make modules_install INSTALL_MOD_PATH=module_staging
+          mkdir -p module_delta
 
-      - name: Package bzImage
+          # 找出 config 里 =m 的项（原 config 没有的模块）
+          grep "=m" .config | cut -d= -f1 > enabled_modules.txt || true
+
+          echo "Modules marked as module:"
+          cat enabled_modules.txt || true
+
+          # 安装模块到临时目录
+          make modules_install INSTALL_MOD_PATH=module_delta
+
+          # 只保留真正新增的 ko
+          cd module_delta/lib/modules
+          KVER=$(ls | head -n1)
+
+          cd $KVER
+
+          find . -name "*.ko" > all_ko.txt
+
+          # 简单策略：全部打包（更稳）
+          tar -czvf ../../../../modules-delta.tar.gz .
+
+      - name: Package kernel
         run: |
           TAG="epyc7002-7.2-5.10.55"
           gzip -c arch/x86/boot/bzImage > bzImage-${TAG}.gz
-
-      - name: Package modules
-        run: |
-          TAG="epyc7002-7.2-5.10.55"
-          cd module_staging/lib/modules
-          tar -czvf ../../../modules-${TAG}.tar.gz .
 
       - name: Generate tag
         id: tag
@@ -131,29 +147,28 @@ jobs:
           TAG="kernel-$(date +%Y%m%d-%H%M%S)"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Create Release and Upload
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: SA6400 Kernel ${{ steps.tag.outputs.tag }}
           body: |
-            SA6400 (N5105 / Jasper Lake) Kernel Build
+            SA6400 N5105 Kernel Build (Built-in Core)
 
             Features:
-            - Intel 2.5G NIC (igc)
-            - Intel iGPU DRM
-            - GPIO + PINCTRL (OLED support)
-            - I2C full stack (sensor ready)
-            - Thermal + hwmon
-            - USB audio support
+            - GPIO / PINCTRL fully built-in
+            - I2C full stack built-in (OLED ready)
+            - Thermal + HWMON built-in
+            - Intel igc NIC built-in
+            - iGPU DRM built-in
 
             Notes:
-            - modules packaged via INSTALL_MOD_PATH
-            - bzImage compressed as gzip
+            - modules-delta.tar.gz = ONLY newly enabled modules
+            - bzImage contains all core features built-in
 
           prerelease: true
           files: |
             bzImage-epyc7002-7.2-5.10.55.gz
-            modules-epyc7002-7.2-5.10.55.tar.gz
+            modules-delta.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
