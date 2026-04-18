@@ -42,13 +42,6 @@ jobs:
           scripts/config --enable CONFIG_USB_NET_CDC_NCM
 
           #################################
-          # DRM / iGPU
-          #################################
-          scripts/config --enable CONFIG_DRM
-          scripts/config --enable CONFIG_DRM_KMS_HELPER
-          scripts/config --enable CONFIG_DRM_TTM
-
-          #################################
           # PINCTRL / GPIO（关键：全部内置）
           #################################
           scripts/config --enable CONFIG_PINCTRL
