@@ -24,25 +24,27 @@ jobs:
           
       - name: Enable kernel modules
         run: |
-          # GPIO/PIN控制器 (模块)
-          scripts/config --module CONFIG_PINCTRL_INTEL
-          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
+          # Intel 2.5G Ethernet (N5105 i225/i226)
+          scripts/config --module CONFIG_IGC
           
-          # CPU温度监控 (模块)
-          scripts/config --module CONFIG_SENSORS_CORETEMP
-          scripts/config --module CONFIG_INTEL_POWERCLAND
-          scripts/config --module CONFIG_INTEL_POWERCLAMP
+          # USB Ethernet (USB网卡)
+          scripts/config --module CONFIG_USB_NET_AX88179_178A
+          scripts/config --module CONFIG_USB_NET_CDCETHER
+          scripts/config --module CONFIG_USB_NET_CDC_NCM
           
-          # 热管理 (模块)
-          scripts/config --module CONFIG_ACPI_THERMAL
+          # Intel Graphics (N5105 UHD Graphics)
+          scripts/config --module CONFIG_DRM
+          scripts/config --module CONFIG_DRM_KMS_HELPER
+          scripts/config --module CONFIG_DRM_TTM
           
-          # PWM/LPSS (模块)
-          scripts/config --module CONFIG_PWM_LPSS
-          scripts/config --module CONFIG_PWM_LPSS_PCI
-          scripts/config --module CONFIG_PWM_LPSS_PLATFORM
+          # I2C bit-banging (显卡需要)
+          scripts/config --module CONFIG_I2C_ALGOBIT
           
-          # 硬盘热插拔 (模块)
-          scripts/config --module CONFIG_SCSI_SCAN_ASYNC
+          # 温度传感器
+          scripts/config --module CONFIG_SENSORS_ADT7475
+          
+          # 声音 - USB Audio
+          scripts/config --module CONFIG_SND_USB_AUDIO
 
       - name: Build kernel and modules
         run: |
@@ -54,12 +56,20 @@ jobs:
 
       - name: Package modules
         run: |
-          # 找出所有编译出的 .ko 模块
+          # 打包所有编译出的 .ko 模块
           find . -name "*.ko" -type f | tar -czvf modules.tar.gz -T -
+
+      - name: Create Release
+        id: create_release
+        run: |
+          TAG="kernel-$(date +%Y%m%d-%H%M%S)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          gh release create $TAG --title "Kernel $TAG" --notes "Automated kernel build" || true
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
+          tag: ${{ steps.create_release.outputs.tag }}
           draft: false
           files: |
             bzImage.tar.gz
