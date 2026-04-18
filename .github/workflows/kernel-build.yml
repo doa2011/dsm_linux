@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel (Built-in + Sensor Enhanced)
+name: Build SA6400 Kernel (Built-in + GPIO/OLED + Sensor)
 
 on:
   workflow_dispatch:
@@ -28,67 +28,69 @@ jobs:
       - name: Enable SA6400 + N5105 core modules
         run: |
 
-          ############################
-          # 🔥 Intel NIC (N5105 必需)
-          ############################
-          scripts/config --module CONFIG_IGC   # i225/i226 2.5G
+          #####################################
+          # 🔥 Intel NIC (N5105 i225/i226)
+          #####################################
+          scripts/config --module CONFIG_IGC
 
-          ############################
+          #####################################
           # 🔥 USB 网络
-          ############################
+          #####################################
           scripts/config --module CONFIG_USB_NET_AX88179_178A
           scripts/config --module CONFIG_USB_NET_CDCETHER
           scripts/config --module CONFIG_USB_NET_CDC_NCM
 
-          ############################
-          # 🔥 DRM（iGPU / Jasper Lake）
-          ############################
+          #####################################
+          # 🔥 DRM / iGPU
+          #####################################
           scripts/config --module CONFIG_DRM
           scripts/config --module CONFIG_DRM_KMS_HELPER
           scripts/config --module CONFIG_DRM_TTM
 
-          ############################
-          # 🔥 I2C / GPIO（OLED / 传感器基础）
-          ############################
+          #####################################
+          # 🔥 PINCTRL（关键：GPIO基础）
+          #####################################
+          scripts/config --module CONFIG_PINCTRL
+          scripts/config --module CONFIG_PINCTRL_INTEL
+          scripts/config --module CONFIG_PINCTRL_JASPERLAKE
+
+          #####################################
+          # 🔥 GPIO（OLED / 控制）
+          #####################################
+          scripts/config --module CONFIG_GPIOLIB
+          scripts/config --module CONFIG_GPIO_CDEV
+          scripts/config --module CONFIG_GPIO_SYSFS
+          scripts/config --module CONFIG_GPIO_ACPI
+
+          #####################################
+          # 🔥 I2C（OLED / 传感器）
+          #####################################
           scripts/config --module CONFIG_I2C
           scripts/config --module CONFIG_I2C_ALGOBIT
           scripts/config --module CONFIG_I2C_DEV
           scripts/config --module CONFIG_I2C_GPIO
+          scripts/config --module CONFIG_I2C_MUX
 
-          scripts/config --module CONFIG_GPIOLIB
-          scripts/config --module CONFIG_GPIO_CDEV
-          scripts/config --module CONFIG_GPIO_SYSFS
-
-          ############################
-          # 🔥 THERMAL（必须 built-in 建议，但这里保守 module）
-          ############################
+          #####################################
+          # 🔥 THERMAL（CPU温控）
+          #####################################
           scripts/config --module CONFIG_THERMAL
           scripts/config --module CONFIG_X86_PKG_TEMP_THERMAL
           scripts/config --module CONFIG_INTEL_PCH_THERMAL
           scripts/config --module CONFIG_INT340X_THERMAL
-
-          ############################
-          # 🔥 HWMON（传感器框架）
-          ############################
-          scripts/config --module CONFIG_HWMON
-
-          ############################
-          # 🔥 CPU sensor（N5105关键）
-          ############################
-          scripts/config --module CONFIG_X86_PKG_TEMP_THERMAL
           scripts/config --module CONFIG_INTEL_POWERCLAMP
 
-          ############################
-          # 🔥 常用传感器（可选但建议）
-          ############################
-          scripts/config --module CONFIG_SENSORS_ADT7475
-          scripts/config --module CONFIG_SENSORS_CORETEMP
-          scripts/config --module CONFIG_SENSORS_NCT6775
+          #####################################
+          # 🔥 HWMON（传感器框架）
+          #####################################
+          scripts/config --module CONFIG_HWMON
 
-          ############################
-          # 🔥 USB 音频（NAS可选）
-          ############################
-          scripts/config --module CONFIG_SND_USB_AUDIO
+          #####################################
+          # 🔥 常见传感器（可选）
+          #####################################
+          scripts/config --module CONFIG_SENSORS_CORETEMP
+          scripts/config --module CONFIG_SENSORS_ADT7475
+          scripts/config --module CONFIG_SENSORS_NCT6775
 
       - name: Prepare config
         run: |
@@ -98,9 +100,9 @@ jobs:
         run: |
           make -j$(nproc) bzImage modules
 
-      ########################################################
-      # 📦 正确方式：安装模块到 staging 目录（关键优化）
-      ########################################################
+      ########################################
+      # 📦 正确 modules 安装（关键修复）
+      ########################################
       - name: Install modules to staging
         run: |
           mkdir -p module_staging
@@ -111,7 +113,7 @@ jobs:
           TAG="epyc7002-7.2-5.10.55"
           gzip -c arch/x86/boot/bzImage > bzImage-${TAG}.gz
 
-      - name: Package modules (clean staged)
+      - name: Package modules
         run: |
           TAG="epyc7002-7.2-5.10.55"
           cd module_staging/lib/modules
@@ -131,20 +133,17 @@ jobs:
           body: |
             SA6400 (N5105 / Jasper Lake) Kernel Build
 
-            Kernel:
-            - 5.10.55
-            - DSM 7.2.x compatible
-
             Features:
             - Intel 2.5G NIC (igc)
-            - I2C + GPIO (OLED ready)
-            - Thermal + hwmon framework
-            - Intel iGPU DRM support
-            - USB Ethernet + Audio
+            - Intel iGPU DRM
+            - GPIO + PINCTRL (OLED support)
+            - I2C full stack (sensor ready)
+            - Thermal + hwmon
+            - USB audio support
 
-            Packaging:
-            - bzImage: gzip compressed
-            - modules: staged clean install
+            Notes:
+            - modules packaged via INSTALL_MOD_PATH
+            - bzImage compressed as gzip
 
           prerelease: true
           files: |
