@@ -55,19 +55,10 @@ jobs:
           scripts/config --module CONFIG_PINCTRL_JASPERLAKE
 
           #####################################
-          # 🔥 GPIO（OLED / 控制）
-          #####################################
-          scripts/config --module CONFIG_GPIOLIB
-          scripts/config --module CONFIG_GPIO_CDEV
-          scripts/config --module CONFIG_GPIO_SYSFS
-          scripts/config --module CONFIG_GPIO_ACPI
-
-          #####################################
           # 🔥 I2C（OLED / 传感器）
           #####################################
           scripts/config --module CONFIG_I2C
           scripts/config --module CONFIG_I2C_ALGOBIT
-          scripts/config --module CONFIG_I2C_DEV
           scripts/config --module CONFIG_I2C_GPIO
           scripts/config --module CONFIG_I2C_MUX
 
