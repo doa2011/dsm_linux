@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel (Built-in + Delta Modules)
+name: Build SA6400 Kernel
 
 on:
   workflow_dispatch:
@@ -21,10 +21,9 @@ jobs:
             flex bison m4 bc libelf-dev libssl-dev dwarves \
             zstd python3 cpio rsync gcc make kmod diffutils
 
-      - name: Load base config (backup)
+      - name: Load base config
         run: |
           cp synology/synoconfigs/epyc7002 .config
-          cp .config .config.base
 
       - name: Enable built-in kernel features
         run: |
@@ -35,10 +34,9 @@ jobs:
           scripts/config --enable CONFIG_IGC
 
           #################################
-          # PINCTRL / GPIO（关键：全部内置）
+          # PINCTRL / GPIO（全部内置）
           #################################
           scripts/config --enable CONFIG_ACPI_TABLE_UPGRADE
-          scripts/config --enable CONFIG_PINCTRL
           scripts/config --enable CONFIG_PINCTRL_INTEL
           scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
           scripts/config --enable CONFIG_I2C
@@ -59,46 +57,7 @@ jobs:
 
       - name: Build kernel
         run: |
-          make -j$(nproc) bzImage modules
-
-      - name: Extract newly built modules only (delta)
-        run: |
-          mkdir -p module_delta
-
-          # 找出新增的 =m 模块（base 没有的）
-          grep "=m" .config | cut -d= -f1 | sort > new_modules.txt
-          grep "=m" .config.base | cut -d= -f1 | sort > base_modules.txt
-          comm -23 new_modules.txt base_modules.txt > delta_modules.txt || true
-
-          echo "=== Base =m modules: $(wc -l < base_modules.txt) ==="
-          echo "=== New  =m modules: $(wc -l < new_modules.txt) ==="
-          echo "=== Delta     modules: $(wc -l < delta_modules.txt) ==="
-          echo ""
-          echo "Delta modules list:"
-          cat delta_modules.txt || true
-
-          # 安装全部模块
-          make modules_install INSTALL_MOD_PATH=module_delta
-
-          # 只复制 delta 模块 .ko 文件
-          KVER=$(ls module_delta/lib/modules/ | head -n1)
-          KMOD_DIR="module_delta/lib/modules/$KVER"
-
-          while IFS= read -r mod; do
-            KO_FILE=$(find "$KMOD_DIR" -name "${mod}.ko" 2>/dev/null || true)
-            if [ -n "$KO_FILE" ]; then
-              echo "Packing: $mod.ko"
-              cp "$KO_FILE" module_delta/
-            else
-              echo "Not found (may be built-in or part of composite): $mod"
-            fi
-          done < delta_modules.txt
-
-          cd module_delta
-          tar --exclude='.*' -czvf ../modules-delta.tar.gz .
-          echo ""
-          echo "=== modules-delta.tar.gz created ==="
-          ls -lh ../modules-delta.tar.gz
+          make -j$(nproc) bzImage
 
       - name: Package kernel
         run: |
@@ -117,20 +76,17 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: SA6400 Kernel ${{ steps.tag.outputs.tag }}
           body: |
-            SA6400 N5105 Kernel Build (Built-in Core + Delta Modules)
+            SA6400 N5105 Kernel Build
 
-            Features:
+            Features (all built-in):
             - GPIO / PINCTRL fully built-in
             - Thermal + HWMON built-in
             - Intel igc NIC built-in
-            
-            Notes:
-            - bzImage contains ALL core features built-in
-            - modules-delta.tar.gz = ONLY newly enabled .ko modules (not in base config)
 
+            Notes:
+            - bzImage contains ALL features built-in, no external modules needed
           prerelease: true
           files: |
             bzImage-epyc7002-7.2-5.10.55.gz
-            modules-delta.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
