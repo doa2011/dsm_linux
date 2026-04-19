@@ -37,9 +37,12 @@ jobs:
           #################################
           # PINCTRL / GPIO（关键：全部内置）
           #################################
+          scripts/config --enable CONFIG_ACPI_TABLE_UPGRADE
           scripts/config --enable CONFIG_PINCTRL
           scripts/config --enable CONFIG_PINCTRL_INTEL
           scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
+          scripts/config --enable CONFIG_I2C
+          scripts/config --enable CONFIG_I2C_I801
 
           #################################
           # THERMAL（CPU温控）
