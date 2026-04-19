@@ -35,32 +35,11 @@ jobs:
           scripts/config --enable CONFIG_IGC
 
           #################################
-          # USB Network
-          #################################
-          scripts/config --enable CONFIG_USB_NET_AX88179_178A
-          scripts/config --enable CONFIG_USB_NET_CDCETHER
-          scripts/config --enable CONFIG_USB_NET_CDC_NCM
-
-          #################################
           # PINCTRL / GPIO（关键：全部内置）
           #################################
           scripts/config --enable CONFIG_PINCTRL
           scripts/config --enable CONFIG_PINCTRL_INTEL
           scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
-
-          scripts/config --enable CONFIG_GPIOLIB
-          scripts/config --enable CONFIG_GPIO_CDEV
-          scripts/config --enable CONFIG_GPIO_ACPI
-          scripts/config --enable CONFIG_GPIO_SYSFS
-
-          #################################
-          # I2C（必须内置，否则 OLED 起不来）
-          #################################
-          scripts/config --enable CONFIG_I2C
-          scripts/config --module CONFIG_I2C_DEV
-          scripts/config --enable CONFIG_I2C_ALGOBIT
-          scripts/config --enable CONFIG_I2C_GPIO
-          scripts/config --enable CONFIG_I2C_MUX
 
           #################################
           # THERMAL（CPU温控）
@@ -70,29 +49,6 @@ jobs:
           scripts/config --enable CONFIG_INTEL_PCH_THERMAL
           scripts/config --enable CONFIG_INT340X_THERMAL
           scripts/config --enable CONFIG_INTEL_POWERCLAMP
-
-          #################################
-          # HWMON（必须内置）
-          #################################
-          scripts/config --enable CONFIG_HWMON
-          scripts/config --enable CONFIG_SENSORS_CORETEMP
-          scripts/config --enable CONFIG_SENSORS_ADT7475
-          scripts/config --enable CONFIG_SENSORS_NCT6775
-
-          #################################
-          # USB Audio
-          #################################
-          scripts/config --enable CONFIG_SND_USB_AUDIO
-
-          #################################
-          # IOMMU（保持默认但显式）
-          #################################
-          scripts/config --enable CONFIG_INTEL_IOMMU
-
-          #################################
-          # 防止 debug BTF 报错
-          #################################
-          scripts/config --disable CONFIG_DEBUG_INFO_BTF
 
       - name: Prepare config
         run: |
@@ -162,11 +118,9 @@ jobs:
 
             Features:
             - GPIO / PINCTRL fully built-in
-            - I2C full stack built-in (OLED ready)
             - Thermal + HWMON built-in
             - Intel igc NIC built-in
-            - iGPU DRM built-in
-
+            
             Notes:
             - bzImage contains ALL core features built-in
             - modules-delta.tar.gz = ONLY newly enabled .ko modules (not in base config)
