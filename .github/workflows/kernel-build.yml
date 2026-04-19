@@ -1,4 +1,4 @@
-name: Build SA6400 Kernel
+name: Build X1S_SA6400 Kernel
 
 on:
   workflow_dispatch:
@@ -37,6 +37,7 @@ jobs:
           # PINCTRL / GPIO（全部内置）
           #################################
           scripts/config --enable CONFIG_ACPI_TABLE_UPGRADE
+          scripts/config --enable CONFIG_PINCTRL
           scripts/config --enable CONFIG_PINCTRL_INTEL
           scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
           scripts/config --enable CONFIG_I2C
@@ -63,6 +64,7 @@ jobs:
         run: |
           TAG="epyc7002-7.2-5.10.55"
           gzip -c arch/x86/boot/bzImage > bzImage-${TAG}.gz
+          cp .config kernel-config-${TAG}.defconfig
 
       - name: Generate tag
         id: tag
@@ -88,5 +90,6 @@ jobs:
           prerelease: true
           files: |
             bzImage-epyc7002-7.2-5.10.55.gz
+            kernel-config-epyc7002-7.2-5.10.55.defconfig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
