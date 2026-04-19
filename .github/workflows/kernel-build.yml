@@ -23,7 +23,7 @@ jobs:
 
       - name: Load base config
         run: |
-          cp synology/synoconfigs/epyc7002 .config
+          cp synology/synoconfigs/epyc7002_N5105 .config
 
       - name: Enable built-in kernel features
         run: |
@@ -32,16 +32,6 @@ jobs:
           # Intel NIC (N5105)
           #################################
           scripts/config --enable CONFIG_IGC
-
-          #################################
-          # PINCTRL / GPIO（全部内置）
-          #################################
-          scripts/config --enable CONFIG_ACPI_TABLE_UPGRADE
-          scripts/config --enable CONFIG_PINCTRL
-          scripts/config --enable CONFIG_PINCTRL_INTEL
-          scripts/config --enable CONFIG_PINCTRL_JASPERLAKE
-          scripts/config --enable CONFIG_I2C
-          scripts/config --enable CONFIG_I2C_I801
 
           #################################
           # THERMAL（CPU温控）
